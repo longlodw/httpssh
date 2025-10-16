@@ -1,9 +1,12 @@
 package main
 
 import (
-	"go.uber.org/zap"
 	"net"
 	"net/http"
+	"net/url"
+
+	"go.uber.org/zap"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type bridgeServerConfig struct {
@@ -14,11 +17,27 @@ type bridgeServerConfig struct {
 type bridgeHandler struct {
 	logger      *zap.Logger
 	promMetrics *prometheusMetrics
-	bridgeAddr  string
+	sub string
+	secretKey []byte
+	aud  *url.URL
+	iss string
 }
 
-func (bs *bridgeHandler) handle(w *http.ResponseWriter, r *http.Request) {
+func (bs *bridgeHandler) direct(r *http.Request) {
 	bs.logger.Info("Handling new request", zap.String("remote_addr", r.RemoteAddr))
 	bs.promMetrics.totalRequests.Inc()
-	httpCon := net.Dial
+	r.URL.Scheme = bs.aud.Scheme
+	r.URL.Host = bs.aud.Host
+	r.Header.Set("X-Forwarded-Host", r.Host)
+	claims := jwt.MapClaim{
+		"sub": bs.sub,
+		"aud": bs.aud.String()
+	}
+	r.Header.Set("X-Public-Key", bs.sshPK)
+}
+
+func initBridgeServer(cfg *bridgeServerConfig, logger *zap.Logger, promMetrics *prometheusMetrics) *http.Server {
+	
+	muxBridge := http.NewServeMux()
+	muxBridge.HandleFunc()
 }
