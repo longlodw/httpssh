@@ -2,20 +2,19 @@ package main
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-type prometheusMetrics struct {
+type PrometheusMetrics struct {
 	activeConnections prometheus.Gauge
 	totalConnections  prometheus.Counter
 	totalRequests     prometheus.Counter
 }
 
-func newPrometheusMetrics() *prometheusMetrics {
-	return &prometheusMetrics{
+func NewPrometheusMetrics() *PrometheusMetrics {
+	return &PrometheusMetrics{
 		activeConnections: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "wstcp_active_connections",
 			Help: "Number of currently active WebSocket connections",
@@ -31,19 +30,12 @@ func newPrometheusMetrics() *prometheusMetrics {
 	}
 }
 
-func (pm *prometheusMetrics) register() {
+func (pm *PrometheusMetrics) Register() {
 	prometheus.MustRegister(pm.activeConnections, pm.totalConnections, pm.totalRequests)
 }
 
-func initMetricsServer(cfg *ServerConfig) *http.Server {
+func InitMetricsServer() *http.ServeMux {
 	muxMetrics := http.NewServeMux()
 	muxMetrics.Handle("/metrics", promhttp.Handler())
-	metricsSrv := &http.Server{
-		Addr:         cfg.ListenAddr,
-		Handler:      muxMetrics,
-		ReadTimeout:  time.Duration(cfg.ReadTimeout),
-		WriteTimeout: time.Duration(cfg.WriteTimeout),
-		IdleTimeout:  time.Duration(cfg.IdleTimeout),
-	}
-	return metricsSrv
+	return muxMetrics
 }
