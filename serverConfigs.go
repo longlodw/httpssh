@@ -2,36 +2,28 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"time"
+	"os"
 )
 
-type Duration time.Duration
-
-func (d *Duration) UnmarshalJSON(b []byte) (err error) {
-	if b[0] == '"' {
-		sd := string(b[1 : len(b)-1])
-		dur, err := time.ParseDuration(sd)
-		if err != nil {
-			return err
-		}
-		*d = Duration(dur)
-		return nil
-	}
-
-	var id int64
-	id, err = json.Number(string(b)).Int64()
-	*d = Duration(id)
-	return err
-}
-
-func (d Duration) MarshalJSON() (b []byte, err error) {
-	return fmt.Appendf(nil, `"%s"`, time.Duration(d).String()), nil
-}
-
 type ServerConfig struct {
-	ListenAddr   string   `json:"listen_addr"`
-	ReadTimeout  Duration `json:"read_timeout"`
-	WriteTimeout Duration `json:"write_timeout"`
-	IdleTimeout  Duration `json:"idle_timeout"`
+	SshListenAddr         string   `json:"ssh_listen_addr"`
+	PrometheusListenAddr  string   `json:"prometheus_listen_addr"`
+	KeyListenAddr         string   `json:"key_listen_addr"`
+	JwtPrivateKeyPath     string   `json:"jwt_private_key_path"`
+	JwtPublicKeyPath      string   `json:"jwt_public_key_path"`
+	SshPrivateKeyPath     string   `json:"ssh_private_key_path"`
+	SshPublicKeyPath      string   `json:"ssh_public_key_path"`
+	AuthorizationEndPoint string   `json:"authorization_end_point"`
+	AllowedBackends       []string `json:"allowed_backends"`
+	NoAuth                bool     `json:"no_auth"`
+}
+
+func LoadServerConfig(configPath string) (*ServerConfig, error) {
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+	var s ServerConfig
+	json.Unmarshal(configData, &s)
+	return &s, nil
 }
