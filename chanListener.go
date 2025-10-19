@@ -35,9 +35,17 @@ func (cl *chanListener) Close() error {
 	return nil
 }
 
-func MakeChanListener(channel <-chan net.Conn) net.Listener {
+func NewChanListener(channel <-chan net.Conn) net.Listener {
 	return &chanListener{
 		channel: channel,
 		closing: make(chan struct{}, 1),
 	}
+}
+
+func MakeChanListeners(hosts map[string]<-chan net.Conn) map[string]net.Listener {
+	result := make(map[string]net.Listener)
+	for k, v := range hosts {
+		result[k] = NewChanListener(v)
+	}
+	return result
 }
