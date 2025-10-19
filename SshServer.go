@@ -1,7 +1,6 @@
-package httpssh
+package main
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
@@ -15,13 +14,14 @@ import (
 
 type SshServer struct {
 	logger      *zap.Logger
-	promMetrics *prometheusMetrics
+	promMetrics *PrometheusMetrics
 	hosts       map[string]chan<- net.Conn
 	confg       *ssh.ServerConfig
 	listener    net.Listener
+	closed      bool
 }
 
-func NewSshServer(logger *zap.Logger, promMetrics *prometheusMetrics, hosts map[string]chan<- net.Conn, confg *ssh.ServerConfig, listener net.Listener) *SshServer {
+func NewSshServer(logger *zap.Logger, promMetrics *PrometheusMetrics, hosts map[string]chan<- net.Conn, confg *ssh.ServerConfig, listener net.Listener) *SshServer {
 	return &SshServer{
 		logger:      logger,
 		promMetrics: promMetrics,
@@ -31,27 +31,27 @@ func NewSshServer(logger *zap.Logger, promMetrics *prometheusMetrics, hosts map[
 	}
 }
 
-func (sh *SshServer) Serve(ctx context.Context) {
-	for {
+func (sh *SshServer) Serve() {
+	for !sh.closed {
 		conn, err := sh.listener.Accept()
 		if err != nil {
-			select {
-			case <-ctx.Done():
+			if sh.closed {
 				return
-			default:
-				sh.logger.Info("Error acceptomg tcp conn", zap.Error(err))
-				continue
 			}
+			sh.logger.Error("Error acceptomg tcp conn", zap.Error(err))
+		} else {
+			go sh.handleConn(conn)
 		}
-		go sh.handleConn(ctx, conn)
 	}
 }
 
-func (sh *SshServer) Close() error {
+func (sh *SshServer) ShutDown() error {
+	sh.closed = true
+	err := sh.listener.Close()
 	for _, v := range sh.hosts {
 		close(v)
 	}
-	return sh.listener.Close()
+	return err
 }
 
 func (sh *SshServer) handleSshNewChan(ch ssh.NewChannel, sshConn *ssh.ServerConn) {
@@ -87,7 +87,7 @@ func (sh *SshServer) handleSshNewChan(ch ssh.NewChannel, sshConn *ssh.ServerConn
 	}
 }
 
-func (sh *SshServer) handleConn(ctx context.Context, c net.Conn) {
+func (sh *SshServer) handleConn(c net.Conn) {
 	defer c.Close()
 	sshConn, chans, reqs, err := ssh.NewServerConn(c, sh.confg)
 	if err != nil {
@@ -96,13 +96,8 @@ func (sh *SshServer) handleConn(ctx context.Context, c net.Conn) {
 	}
 	defer sshConn.Close()
 	go ssh.DiscardRequests(reqs)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case ch := <-chans:
-			go sh.handleSshNewChan(ch, sshConn)
-		}
+	for ch := range chans {
+		go sh.handleSshNewChan(ch, sshConn)
 	}
 }
 
