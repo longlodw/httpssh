@@ -1,6 +1,7 @@
-package httpssh
+package main
 
 import (
+	"crypto"
 	"crypto/rand"
 	"encoding/base64"
 	"net/http"
@@ -21,13 +22,13 @@ type tokenCacheEntry struct {
 type bridgeHandler struct {
 	logger      *zap.Logger
 	promMetrics *prometheusMetrics
-	secretKey   []byte
+	secretKey   crypto.Signer
 	aud         *url.URL
 	tokensCache sync.Map
 	iss         string
 }
 
-func newBridgeHandler(logger *zap.Logger, promMetrics *prometheusMetrics, secretKey []byte, aud *url.URL, iss string) *bridgeHandler {
+func newBridgeHandler(logger *zap.Logger, promMetrics *prometheusMetrics, secretKey crypto.Signer, aud *url.URL, iss string) *bridgeHandler {
 	return &bridgeHandler{
 		logger:      logger,
 		promMetrics: promMetrics,
@@ -83,7 +84,7 @@ func initBridgeServer(bs *bridgeHandler) *http.ServeMux {
 	return muxBridge
 }
 
-func MakeBridgeServerMux(logger *zap.Logger, promMetrics *prometheusMetrics, secretKey []byte, iss string, urls []*url.URL) map[string]*http.ServeMux {
+func MakeBridgeServerMux(logger *zap.Logger, promMetrics *prometheusMetrics, secretKey crypto.Signer, iss string, urls []*url.URL) map[string]*http.ServeMux {
 	results := make(map[string]*http.ServeMux)
 	for _, e := range urls {
 		results[e.String()] = initBridgeServer(newBridgeHandler(logger, promMetrics, secretKey, e, iss))
