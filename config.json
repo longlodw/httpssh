@@ -1,0 +1,12 @@
+{
+  "ssh_listen_addr": "0.0.0.0:2222",
+  "prometheus_listen_addr": "0.0.0.0:9090",
+  "key_listen_addr": "0.0.0.0:8080",
+  "jwt_key_path": "./jwt_key.pem",
+  "ssh_key_path": "./ssh_key.pem",
+  "authorization_end_point": "https://auth.example.com/oauth2/authorize",
+  "allowed_backends": [
+    "https://google.com:443"
+  ],
+  "no_auth": true
+}
