@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto"
 	"crypto/ed25519"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"net"
@@ -20,28 +22,20 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func loadSshPrivateKey(path string) (ssh.Signer, error) {
+func loadPrivateKey(path string) (crypto.Signer, error) {
 	key, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return ssh.ParsePrivateKey(key)
-}
-
-func loadRawPrivateKey(path string) (crypto.Signer, error) {
-	key, err := os.ReadFile(path)
+	block, _ := pem.Decode(key)
+	if block == nil {
+		return nil, fmt.Errorf("Failed to parse key")
+	}
+	res, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		return nil, err
 	}
-	return ed25519.PrivateKey(key), nil
-}
-
-func loadRawPublicKey(path string) (crypto.PublicKey, error) {
-	key, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	return ed25519.PublicKey(key), nil
+	return res.(ed25519.PrivateKey), nil
 }
 
 func main() {
@@ -51,7 +45,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	hostPrivateKey, err := loadSshPrivateKey(serverConfig.SshPrivateKeyPath)
+	hostPrivateKeySigner, err := loadPrivateKey(serverConfig.SshKeyPath)
+	if err != nil {
+		panic(err)
+	}
+	hostPrivateKey, err := ssh.NewSignerFromSigner(hostPrivateKeySigner)
 	if err != nil {
 		panic(err)
 	}
@@ -64,7 +62,7 @@ func main() {
 		PasswordCallback: func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 			q := urlPath.Query()
 			q.Add("username", conn.User())
-			q.Add("password", base64.RawURLEncoding.EncodeToString(password))
+			q.Add("password", string(password))
 			urlPath.RawQuery = q.Encode()
 			res, err := http.Get(urlPath.String())
 			if err != nil {
@@ -107,7 +105,7 @@ func main() {
 	outChans := make(map[string]<-chan net.Conn)
 	for _, allowedHost := range allowedHosts {
 		connChan := make(chan net.Conn)
-		hostString := allowedHost.String()
+		hostString := fmt.Sprintf("%s:%s", allowedHost.Hostname(), allowedHost.Port())
 		inChans[hostString] = connChan
 		outChans[hostString] = connChan
 	}
@@ -118,35 +116,38 @@ func main() {
 	}
 	defer listener.Close()
 	sshServer := NewSshServer(logger, promMetrics, inChans, &sshConfig, listener)
-	jwtPrivateKey, err := loadRawPrivateKey(serverConfig.JwtPrivateKeyPath)
+	jwtPrivateKey, err := loadPrivateKey(serverConfig.JwtKeyPath)
 	if err != nil {
 		panic(err)
 	}
-	jwtPublicKey, err := loadRawPublicKey(serverConfig.JwtPublicKeyPath)
-	if err != nil {
-		panic(err)
-	}
+	jwtPublicKey := jwtPrivateKey.Public()
 	bridgeServerMux := MakeBridgeServerMux(logger, promMetrics, jwtPrivateKey, serverConfig.KeyListenAddr, allowedHosts)
-	go sshServer.Serve()
+	go func() {
+		logger.Info("serving ssh", zap.String("address", serverConfig.SshListenAddr))
+		sshServer.Serve()
+	}()
 	bridgeServers := []*http.Server{}
 	for _, allowedHost := range allowedHosts {
-		hostString := allowedHost.String()
+		hostString := fmt.Sprintf("%s:%s", allowedHost.Hostname(), allowedHost.Port())
 		bridgeServer := &http.Server{
 			Handler: bridgeServerMux[hostString],
 		}
 		bridgeServers = append(bridgeServers, bridgeServer)
-		go func(bs *http.Server) {
-			if err := bs.Serve(chanListeners[hostString]); err != nil {
+		lis := chanListeners[hostString]
+		go func(bs *http.Server, l net.Listener) {
+			logger.Info("serving bridge for", zap.String("address", hostString))
+			if err := bs.Serve(l); err != nil && err != http.ErrServerClosed {
 				logger.Error("bridge server error", zap.Error(err))
 			}
-		}(bridgeServer)
+		}(bridgeServer, lis)
 	}
 	metricsServer := &http.Server{
 		Addr:    serverConfig.PrometheusListenAddr,
 		Handler: metricsServerMux,
 	}
 	go func() {
-		if err := metricsServer.ListenAndServe(); err != nil {
+		logger.Info("serving metrics", zap.String("address", serverConfig.PrometheusListenAddr))
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("Metrics server error", zap.Error(err))
 		}
 	}()
@@ -164,7 +165,7 @@ func main() {
 		Handler: keyServerMux,
 	}
 	go func() {
-		if err := keyServer.ListenAndServe(); err != nil {
+		if err := keyServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("Key server error", zap.Error(err))
 		}
 	}()

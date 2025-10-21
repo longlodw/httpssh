@@ -9,10 +9,8 @@ type ServerConfig struct {
 	SshListenAddr         string   `json:"ssh_listen_addr"`
 	PrometheusListenAddr  string   `json:"prometheus_listen_addr"`
 	KeyListenAddr         string   `json:"key_listen_addr"`
-	JwtPrivateKeyPath     string   `json:"jwt_private_key_path"`
-	JwtPublicKeyPath      string   `json:"jwt_public_key_path"`
-	SshPrivateKeyPath     string   `json:"ssh_private_key_path"`
-	SshPublicKeyPath      string   `json:"ssh_public_key_path"`
+	JwtKeyPath            string   `json:"jwt_key_path"`
+	SshKeyPath            string   `json:"ssh_key_path"`
 	AuthorizationEndPoint string   `json:"authorization_end_point"`
 	AllowedBackends       []string `json:"allowed_backends"`
 	NoAuth                bool     `json:"no_auth"`

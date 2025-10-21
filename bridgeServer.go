@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -87,7 +88,8 @@ func initBridgeServer(bs *bridgeHandler) *http.ServeMux {
 func MakeBridgeServerMux(logger *zap.Logger, promMetrics *PrometheusMetrics, secretKey crypto.Signer, iss string, urls []*url.URL) map[string]*http.ServeMux {
 	results := make(map[string]*http.ServeMux)
 	for _, e := range urls {
-		results[e.String()] = initBridgeServer(newBridgeHandler(logger, promMetrics, secretKey, e, iss))
+		hostString := fmt.Sprintf("%s:%s", e.Hostname(), e.Port())
+		results[hostString] = initBridgeServer(newBridgeHandler(logger, promMetrics, secretKey, e, iss))
 	}
 	return results
 }

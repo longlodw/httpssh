@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"net"
 	"sync/atomic"
 )
@@ -14,13 +13,16 @@ type chanListener struct {
 
 func (cl *chanListener) Accept() (net.Conn, error) {
 	if cl.isClosed.Load() {
-		return nil, io.ErrClosedPipe
+		return nil, net.ErrClosed
 	}
 	select {
-	case conn := <-cl.channel:
+	case conn, ok := <-cl.channel:
+		if !ok {
+			return nil, net.ErrClosed
+		}
 		return conn, nil
 	case _ = <-cl.closing:
-		return nil, io.ErrClosedPipe
+		return nil, net.ErrClosed
 	}
 }
 
